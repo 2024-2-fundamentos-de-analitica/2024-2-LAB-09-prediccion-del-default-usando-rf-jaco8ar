@@ -39,53 +39,38 @@ def clean_data(df):
     return cleaned_df
 
     
-def make_pipeline_rf(categorical_features):
-
-    categorical_transformer = OneHotEncoder(handle_unknown="ignore")
-
+def make_pipeline_rf(cat_features) :
     preprocessor = ColumnTransformer(
-        transformers=[
-            ("cat", categorical_transformer, categorical_features),
-        ],
-        remainder="passthrough"  
+        transformers=[("cat", OneHotEncoder(handle_unknown="ignore"), cat_features)],
+        remainder="passthrough",
     )
-
-
-    pipeline = Pipeline(
+    return Pipeline(
         steps=[
-            ("preprocessor", preprocessor), 
-            ("classifier", RandomForestClassifier(random_state=42)) 
+            ("preprocessor", preprocessor),
+            ("classifier", RandomForestClassifier(random_state=42)),
         ]
     )
 
-    return pipeline
-
-
-def optimize_pipeline(pipeline, X_train, y_train):
-
+def optimize_pipeline(pipeline, X_train, y_train) :
     param_grid = {
         "classifier__n_estimators": [50, 100, 200],  
         "classifier__max_depth": [None, 10, 20],     
         "classifier__min_samples_split": [2, 5, 10], 
     }
 
-
-    scorer = make_scorer(balanced_accuracy_score)
-
-
     grid_search = GridSearchCV(
-        pipeline, 
-        param_grid, 
-        scoring=scorer, 
-        cv=10, 
+        pipeline,
+        param_grid,
+        cv=10,
+        scoring="balanced_accuracy",
         n_jobs=-1,
-        verbose=1
+        verbose=1,
+        refit=True,
     )
-
     grid_search.fit(X_train, y_train)
+    return grid_search,  grid_search.best_estimator_
 
-    return grid_search.best_estimator_, grid_search.best_params_
-    
+
 import shutil
 def create_output_directory(output_directory):
     if os.path.exists(output_directory):
@@ -106,6 +91,7 @@ def evaluate_model(model, X, y, dataset_name):
     y_pred = model.predict(X)
 
     metrics = {
+        "type" : "metrics",
         "dataset": dataset_name,
         "precision": precision_score(y, y_pred, average="weighted"),
         "balanced_accuracy": balanced_accuracy_score(y, y_pred),
@@ -137,6 +123,8 @@ def compute_confusion_matrix(model, X, y, dataset_name):
 
     return cm_dict
 
+import pickle
+
 def run_job():
 
     train_data = read_zip_data("train")
@@ -152,49 +140,39 @@ def run_job():
     y_test = test_data_clean["default"] 
 
     categorical_features = ["SEX","EDUCATION", "MARRIAGE"]
+
     rf_pipeline = make_pipeline_rf(categorical_features)
 
-    best_model, best_params = optimize_pipeline(rf_pipeline, X_train, y_train)
+    grid_search, best_model = optimize_pipeline(rf_pipeline, X_train, y_train)
 
-    save_model(
-        os.path.join("files/models/", "model.pkl.gz"),
-        best_model
-    )
 
-    train_metrics = evaluate_model(best_model, X_train, y_train, "train")
-    test_metrics = evaluate_model(best_model, X_test, y_test, "test")
-
-    output_path = "files/output/metrics.json"
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    with open(output_path, "w") as f:
-        json.dump([train_metrics, test_metrics], f, indent=4)
-
-    print(f"Metrics saved successfully at {output_path}") 
-
+    os.makedirs("files/models/", exist_ok=True)
+    with gzip.open("files/models/model.pkl.gz", 'wb') as f:
+        pickle.dump(grid_search, f)
+    
     train_cm = compute_confusion_matrix(best_model, X_train, y_train, "train")
     test_cm = compute_confusion_matrix(best_model, X_test, y_test, "test")
 
-    # Load existing metrics from metrics.json
-    output_path = "files/output/metrics.json"
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    # Add "type" field to confusion matrices
+    train_cm["type"] = "cm_matrix"
+    test_cm["type"] = "cm_matrix"
 
-    if os.path.exists(output_path):
-        with open(output_path, "r") as f:
-            metrics_data = json.load(f)
-    else:
-        metrics_data = []
+    metrics = []
 
+    train_metrics = evaluate_model(best_model, X_train, y_train, "train")
+    test_metrics = evaluate_model(best_model, X_test, y_test, "test")
+    
+    metrics.append(train_metrics)
+    metrics.append(test_metrics)
     # Append new confusion matrices
-    metrics_data.append(train_cm)
-    metrics_data.append(test_cm)
+    metrics.append(train_cm)
+    metrics.append(test_cm)
 
-    # Save updated metrics
-    with open(output_path, "w") as f:
-        json.dump(metrics_data, f, indent=4)
-
-    print(f"Confusion matrices saved successfully at {output_path}")
-
+    os.makedirs("files/output/", exist_ok=True)
+    with open("files/output/metrics.json", "w") as f:
+        for metric in metrics:
+            f.write(json.dumps(metric) + "\n")
+    print("metricas y modelo guardado :)" )
 
 
 if __name__ == "__main__":
