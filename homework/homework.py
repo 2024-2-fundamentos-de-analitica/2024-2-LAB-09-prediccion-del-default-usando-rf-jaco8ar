@@ -38,7 +38,7 @@ def clean_data(df):
     
     return cleaned_df
 
-    
+
 def make_pipeline_rf(cat_features) :
     preprocessor = ColumnTransformer(
         transformers=[("cat", OneHotEncoder(handle_unknown="ignore"), cat_features)],
@@ -54,8 +54,9 @@ def make_pipeline_rf(cat_features) :
 def optimize_pipeline(pipeline, X_train, y_train) :
     param_grid = {
         "classifier__n_estimators": [50, 100, 200],  
-        "classifier__max_depth": [None, 10, 20],     
-        "classifier__min_samples_split": [2, 5, 10], 
+        "classifier__max_depth": [10, 20],     
+        "classifier__min_samples_split": [2, 5], 
+        "classifier__min_samples_leaf": [1, 2]
     }
 
     grid_search = GridSearchCV(
@@ -64,10 +65,11 @@ def optimize_pipeline(pipeline, X_train, y_train) :
         cv=10,
         scoring="balanced_accuracy",
         n_jobs=-1,
-        verbose=1,
+        verbose=2,
         refit=True,
     )
     grid_search.fit(X_train, y_train)
+    print(grid_search.best_params_)
     return grid_search,  grid_search.best_estimator_
 
 
