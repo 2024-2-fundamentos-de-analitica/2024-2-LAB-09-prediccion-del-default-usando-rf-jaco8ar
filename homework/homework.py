@@ -53,10 +53,10 @@ def make_pipeline_rf(cat_features) :
 
 def optimize_pipeline(pipeline, X_train, y_train) :
     param_grid = {
-        "classifier__n_estimators": [50, 100, 200],  
-        "classifier__max_depth": [10, 20],     
-        "classifier__min_samples_split": [2, 5], 
-        "classifier__min_samples_leaf": [1, 2]
+        "classifier__n_estimators": [50, 100, 200],
+        "classifier__max_depth": [None, 5, 10, 20],
+        "classifier__min_samples_split": [2, 5, 10],
+        "classifier__min_samples_leaf": [1, 2, 4],
     }
 
     grid_search = GridSearchCV(
